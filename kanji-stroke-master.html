@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>漢字書き順マスター</title>
+    <!-- Tailwind CSS (スタイリング用) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons (アイコン用) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* ノートの背景のようなグリッド模様 */
+        .grid-bg {
+            background-color: #f8fafc;
+            background-image: 
+                linear-gradient(to right, #e2e8f0 1px, transparent 1px),
+                linear-gradient(to bottom, #e2e8f0 1px, transparent 1px);
+            background-size: 20px 20px;
+            background-position: center center;
+        }
+        
+        /* 描画用パスのアニメーション最適化 */
+        .draw-path {
+            will-change: stroke-dashoffset;
+            /* 初期状態は線を隠すため、非常に大きな値を設定しておく(JSで正確な値に上書きされます) */
+            stroke-dasharray: 1000;
+            stroke-dashoffset: 1000;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen font-sans text-slate-800 flex flex-col items-center py-8 px-4">
+
+    <!-- ヘッダー -->
+    <header class="text-center mb-8">
+        <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight mb-2 flex items-center justify-center gap-2">
+            <i data-lucide="pen-tool" class="w-8 h-8 text-indigo-600"></i>
+            漢字書き順マスター
+        </h1>
+        <p class="text-slate-500">アニメーションで正しい書き順を覚えよう！</p>
+    </header>
+
+    <!-- メインアプリケーションカード -->
+    <main class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
+        
+        <!-- 上部：漢字選択とカウンター -->
+        <div class="p-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+            <div class="flex-1 mr-4 relative">
+                <label for="kanji-input" class="block text-sm font-bold text-slate-600 mb-1">学習する漢字 (1文字)</label>
+                <div class="flex gap-2">
+                    <input type="text" id="kanji-input" maxlength="1" placeholder="例: 漢" value="漢" class="w-full bg-white border-2 border-slate-300 text-slate-900 text-xl text-center font-bold rounded-xl focus:ring-indigo-500 focus:border-indigo-500 block p-2.5 transition-colors">
+                    <!-- 検索ボタン -->
+                    <button id="btn-search" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl transition-colors flex items-center justify-center min-w-[3.5rem]" title="検索">
+                        <i data-lucide="search" class="w-5 h-5"></i>
+                    </button>
+                    <!-- リンク共有ボタン (追加) -->
+                    <button id="btn-share" class="px-4 py-2 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-bold rounded-xl transition-colors flex items-center justify-center min-w-[3.5rem]" title="この漢字のリンクをコピー">
+                        <i data-lucide="link" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                <div id="error-message" class="absolute -bottom-5 left-0 text-xs font-bold text-red-500 hidden">データが見つかりません</div>
+                <div id="share-message" class="absolute -bottom-5 left-0 text-xs font-bold text-indigo-600 hidden">リンクをコピーしました！</div>
+            </div>
+            <div class="text-center bg-white border-2 border-slate-200 rounded-xl px-4 py-2 shadow-sm">
+                <div class="text-xs font-bold text-slate-500 mb-0.5">現在の画</div>
+                <div class="text-2xl font-black text-indigo-600 font-mono leading-none">
+                    <span id="stroke-current">0</span><span class="text-slate-400 text-lg font-medium">/<span id="stroke-total">0</span></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 中央：キャンバスエリア -->
+        <div class="p-8 flex justify-center grid-bg relative">
+            <div class="relative w-64 h-64 bg-white shadow-md border-2 border-slate-300 rounded-lg overflow-hidden">
+                <!-- SVGキャンバス (KanjiVGのデータは基本 109x109 の viewBox です) -->
+                <svg viewBox="0 0 109 109" class="w-full h-full">
+                    <!-- 十字の補助線（マス目） -->
+                    <line x1="54.5" y1="0" x2="54.5" y2="109" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="4,4" />
+                    <line x1="0" y1="54.5" x2="109" y2="54.5" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="4,4" />
+                    
+                    <!-- ガイド（薄いグレーの背景字） -->
+                    <g id="guide-group" stroke="#e2e8f0" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"></g>
+                    
+                    <!-- 描画（黒い筆跡） -->
+                    <g id="draw-group" stroke="#0f172a" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"></g>
+                </svg>
+            </div>
+        </div>
+
+        <!-- 下部：コントロールボタン -->
+        <div class="p-6 bg-white flex justify-center gap-4 border-t border-slate-100">
+            <button id="btn-reset" class="flex items-center justify-center gap-2 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors active:scale-95">
+                <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
+                リセット
+            </button>
+            <button id="btn-play-pause" class="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-200 active:scale-95">
+                <i data-lucide="play" class="w-6 h-6" id="icon-play"></i>
+                <i data-lucide="pause" class="w-6 h-6 hidden" id="icon-pause"></i>
+                <span id="text-play-pause" class="text-lg">再生</span>
+            </button>
+        </div>
+    </main>
+
+    <div class="mt-8 text-center text-sm text-slate-400">
+        <p>※漢字パスデータは <a href="http://kanjivg.tagaini.net/" target="_blank" class="underline hover:text-slate-600">KanjiVG</a> を使用しています</p>
+    </div>
+
+    <script>
+        // --- 1. DOM要素の取得 ---
+        const inputKanji = document.getElementById('kanji-input');
+        const btnSearch = document.getElementById('btn-search');
+        const btnShare = document.getElementById('btn-share');
+        const errorMessage = document.getElementById('error-message');
+        const shareMessage = document.getElementById('share-message');
+        
+        const guideGroup = document.getElementById('guide-group');
+        const drawGroup = document.getElementById('draw-group');
+        const textCurrent = document.getElementById('stroke-current');
+        const textTotal = document.getElementById('stroke-total');
+
+        const btnReset = document.getElementById('btn-reset');
+        const btnPlayPause = document.getElementById('btn-play-pause');
+        const iconPlay = document.getElementById('icon-play');
+        const iconPause = document.getElementById('icon-pause');
+        const textPlayPause = document.getElementById('text-play-pause');
+
+        // --- 2. アニメーション状態管理 ---
+        let paths = [];               
+        let currentPathIndex = 0;     
+        let currentAnimation = null;  
+        let state = 'idle';           
+
+        // --- 3. 初期化処理 ---
+        function init() {
+            // URLパラメータから漢字を取得 (例: ?char=猫)
+            const urlParams = new URLSearchParams(window.location.search);
+            const initialChar = urlParams.get('char') || '漢';
+            inputKanji.value = initialChar;
+
+            // イベントリスナーの設定
+            btnSearch.addEventListener('click', () => loadKanji(inputKanji.value));
+            inputKanji.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') loadKanji(inputKanji.value);
+            });
+            inputKanji.addEventListener('focus', () => inputKanji.select());
+            
+            btnReset.addEventListener('click', reset);
+            btnPlayPause.addEventListener('click', togglePlayPause);
+            btnShare.addEventListener('click', copyShareLink);
+            
+            // 最初の漢字をロードして描画準備
+            loadKanji(inputKanji.value);
+            
+            lucide.createIcons();
+        }
+
+        // --- 4. 共有リンクをクリップボードにコピーする処理 ---
+        function copyShareLink() {
+            try {
+                // 現在のURLを取得し、クエリパラメータに現在の漢字をセット
+                const url = new URL(window.location.href);
+                
+                // blob環境ではダミーのURLをベースにする (プレビュー環境対策)
+                const shareUrl = url.protocol.startsWith('blob:') 
+                    ? new URL('https://example.com/') 
+                    : url;
+                    
+                shareUrl.searchParams.set('char', inputKanji.value);
+                
+                // iframe対応のため document.execCommand を使用してコピー
+                const textArea = document.createElement("textarea");
+                textArea.value = shareUrl.href;
+                textArea.style.position = "fixed";
+                textArea.style.left = "-9999px";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    // 成功メッセージの表示
+                    errorMessage.classList.add('hidden');
+                    shareMessage.classList.remove('hidden');
+                    
+                    // アイコンを一時的にチェックマークに変更
+                    const originalHTML = btnShare.innerHTML;
+                    btnShare.innerHTML = '<i data-lucide="check" class="w-5 h-5"></i>';
+                    lucide.createIcons();
+                    
+                    setTimeout(() => {
+                        shareMessage.classList.add('hidden');
+                        btnShare.innerHTML = originalHTML;
+                        lucide.createIcons();
+                    }, 2500);
+                }
+                
+                document.body.removeChild(textArea);
+            } catch (err) {
+                console.error('コピーに失敗しました', err);
+            }
+        }
+
+        // --- 5. KanjiVGからSVGデータを動的に取得 ---
+        async function fetchKanjiPaths(char) {
+            if (!char) return null;
+            const code = char.charCodeAt(0).toString(16).padStart(5, '0');
+            const url = `https://raw.githubusercontent.com/KanjiVG/kanjivg/master/kanji/${code}.svg`;
+            
+            try {
+                const response = await fetch(url);
+                if (!response.ok) return null;
+                const svgText = await response.text();
+                
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(svgText, "image/svg+xml");
+                const pathElements = doc.querySelectorAll('path');
+                
+                const paths = Array.from(pathElements).map(p => p.getAttribute('d'));
+                return paths.length > 0 ? paths : null;
+            } catch (e) {
+                console.error("データ取得エラー:", e);
+                return null;
+            }
+        }
+
+        // --- 6. 漢字の読み込みとSVGパスの生成 ---
+        async function loadKanji(char) {
+            if (!char) return;
+
+            reset();
+
+            errorMessage.classList.add('hidden');
+            shareMessage.classList.add('hidden');
+            btnSearch.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>';
+            lucide.createIcons();
+
+            const data = await fetchKanjiPaths(char);
+
+            btnSearch.innerHTML = '<i data-lucide="search" class="w-5 h-5"></i>';
+            lucide.createIcons();
+
+            if (!data) {
+                errorMessage.classList.remove('hidden');
+                return;
+            }
+
+            guideGroup.innerHTML = '';
+            drawGroup.innerHTML = '';
+            paths = [];
+
+            data.forEach((pathString) => {
+                const guidePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                guidePath.setAttribute('d', pathString);
+                guideGroup.appendChild(guidePath);
+
+                const drawPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                drawPath.setAttribute('d', pathString);
+                drawPath.classList.add('draw-path');
+                drawGroup.appendChild(drawPath);
+                
+                paths.push(drawPath);
+            });
+
+            textTotal.textContent = paths.length;
+            textCurrent.textContent = '0';
+            
+            requestAnimationFrame(() => {
+                paths.forEach(p => {
+                    const len = p.getTotalLength();
+                    p.style.strokeDasharray = len;
+                    p.style.strokeDashoffset = len;
+                });
+            });
+            
+            // URLの表示も静かに更新しておく(履歴には追加しない)
+            // Canvasプレビュー環境(blob:)でのエラーを防ぐための例外処理を追加
+            try {
+                const url = new URL(window.location.href);
+                if (!url.protocol.startsWith('blob:')) {
+                    url.searchParams.set('char', char);
+                    window.history.replaceState({}, '', url);
+                }
+            } catch (err) {
+                console.warn("この環境（プレビュー等）ではURLの自動更新が制限されています。");
+            }
+        }
+
+        // --- 7. UI（ボタン表示など）の更新 ---
+        function updateUI() {
+            if (state === 'playing') {
+                iconPlay.classList.add('hidden');
+                iconPause.classList.remove('hidden');
+                textPlayPause.textContent = '一時停止';
+                btnPlayPause.classList.replace('bg-indigo-600', 'bg-amber-500');
+                btnPlayPause.classList.replace('hover:bg-indigo-700', 'hover:bg-amber-600');
+                btnPlayPause.classList.replace('shadow-indigo-200', 'shadow-amber-200');
+            } else {
+                iconPlay.classList.remove('hidden');
+                iconPause.classList.add('hidden');
+                textPlayPause.textContent = state === 'paused' ? '再開' : '再生';
+                btnPlayPause.classList.replace('bg-amber-500', 'bg-indigo-600');
+                btnPlayPause.classList.replace('hover:bg-amber-600', 'hover:bg-indigo-700');
+                btnPlayPause.classList.replace('shadow-amber-200', 'shadow-indigo-200');
+            }
+        }
+
+        // --- 8. 再生・一時停止の切り替え ---
+        async function togglePlayPause() {
+            if (state === 'playing') {
+                pause();
+            } else {
+                await play();
+            }
+        }
+
+        // --- 9. 再生処理 (コアロジック) ---
+        async function play() {
+            if (state === 'playing') return;
+
+            if (state === 'paused' && currentAnimation) {
+                currentAnimation.play();
+                state = 'playing';
+                updateUI();
+                return;
+            }
+
+            if (currentPathIndex >= paths.length) {
+                reset();
+            }
+
+            state = 'playing';
+            updateUI();
+
+            while (currentPathIndex < paths.length) {
+                if (state !== 'playing') break;
+
+                textCurrent.textContent = currentPathIndex + 1;
+                
+                const path = paths[currentPathIndex];
+                const len = path.getTotalLength();
+                
+                currentAnimation = path.animate([
+                    { strokeDashoffset: len },
+                    { strokeDashoffset: 0 }
+                ], {
+                    duration: 800,
+                    easing: 'ease-in-out',
+                    fill: 'forwards'
+                });
+
+                try {
+                    await currentAnimation.finished;
+                    path.style.strokeDashoffset = 0;
+                    currentPathIndex++;
+                } catch (e) {
+                    break;
+                }
+            }
+
+            if (currentPathIndex >= paths.length) {
+                state = 'idle';
+                updateUI();
+                textPlayPause.textContent = 'もう一度';
+            }
+        }
+
+        // --- 10. 一時停止処理 ---
+        function pause() {
+            if (state === 'playing' && currentAnimation) {
+                currentAnimation.pause();
+                state = 'paused';
+                updateUI();
+            }
+        }
+
+        // --- 11. リセット（初期状態に戻す）処理 ---
+        function reset() {
+            state = 'idle';
+            
+            if (currentAnimation) {
+                currentAnimation.cancel();
+                currentAnimation = null;
+            }
+            
+            paths.forEach(p => {
+                const len = p.getTotalLength();
+                p.style.strokeDashoffset = len;
+            });
+            
+            currentPathIndex = 0;
+            textCurrent.textContent = '0';
+            updateUI();
+            textPlayPause.textContent = '再生';
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+
+    </script>
+</body>
+</html>
